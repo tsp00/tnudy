@@ -1,0 +1,118 @@
+//  TNuEndxIO.h  =================================================================
+// @(#)root/meta:$Id: TNuEndfIO.h 29000 2009-06-15 13:53:52Z rdm $
+// Author: Tae-Sun Park   09/18/09
+
+//////////////////////////////////////////////////////////////////////////
+//                                                                      //
+// TNudy (NUclear Data librarY)                                         //
+//                                                                      //
+//                                                                      //
+// Endf2TFile.cxx:                                                      //
+// A main routine to convert set of ENDF date file into TFile format    //
+//                                                                      //
+//////////////////////////////////////////////////////////////////////////
+
+#ifndef ROOT_TNuEndfIO
+#define ROOT_TNuEndfIO
+
+//#include "TROOT.h"
+#include "TObject.h"
+//#include "TString.h"
+
+class TNuEndfIO : public TObject
+{
+public:
+   TNuEndfIO(const Char_t *filename, Bool_t do_warn = kTRUE);
+   virtual ~TNuEndfIO();
+
+   Bool_t   IsEndfTape()         { return fIsEndfTape; }
+   const Char_t*   GetFileName() { return fSrcFilename; }
+
+
+   // Low-level IO routines
+   //
+   void     ReadSEND();
+   void     ReadFEND();
+   void     ReadMEND();
+
+   void     ReadCONT(Double_t *c1, Double_t *c2, Int_t *l1, Int_t *l2, Int_t *n1, Int_t *n2);
+   void     ReadCONT(Double_t &c1, Double_t &c2, Int_t &l1, Int_t &l2, Int_t &n1, Int_t &n2);
+   Char_t*  ReadTEXT(Char_t *buf=0, Int_t len=66);  // copy fLine to buf
+   void     ReadINTG(Int_t &i, Int_t &j, Short_t kij[], Int_t ndigit); // read 1 line of INTG
+   void     ReadIntegers(Int_t ints[6], Int_t len = 6);  // read 1 line of integer data
+   void     ReadFloats(Double_t floats[6], Int_t len = 6);// read 1 line of float data
+
+   // return parameter values that are to be read
+   //
+   Int_t    GetMAT() const     { return fMAT; }
+   Int_t    GetMF() const      { return fMF; }
+   Int_t    GetMT() const      { return fMT; }
+   Int_t    GetNS() const      { return fNS; }
+   Long_t   GetLineNum() const { return fLineNum; }
+   //Char_t*  GetLine()          { return fLine; }
+   const Char_t* GetLineData() const { return fLine; }
+
+   Double_t GetC1() const { return Atof(fLine + 0 * 11); }
+   Double_t GetC2() const { return Atof(fLine + 1 * 11); }
+   Int_t    GetL1() const { return Atoi(fLine + 2 * 11); }
+   Int_t    GetL2() const { return Atoi(fLine + 3 * 11); }
+   Int_t    GetN1() const { return Atoi(fLine + 4 * 11); }
+   Int_t    GetN2() const { return Atoi(fLine + 5 * 11); }
+
+   Bool_t   IsSEND() const { return fMAT > 0 && fMF > 0 && fMT == 0; }
+   Bool_t   IsFEND() const { return fMAT > 0 && fMF == 0 && fMT == 0; }
+   Bool_t   IsMEND() const { return fMAT == 0 && fMF == 0 && fMT == 0; }
+   Bool_t   IsTEND() const { return (fMAT == -1 && fMF == 0 && fMT == 0) || fHasEOF; }
+
+   Bool_t   IsIntegers(); // check if the line is for integer data
+   Bool_t   IsFloats();   // check if the line is for float data
+   Bool_t   IsINTG();     // check if the line is for INTG data
+
+   const Char_t*  GuessRecType();  // guess the type of the record to be read
+   Bool_t   CheckRecType(const char* classname);  // check the type of the record to be read
+
+   const Char_t* GetTitle() const { return fTitle; }
+
+   // Goto ...
+   //
+   void     GotoSEND();
+   void     GotoFEND();
+   void     GotoMEND();
+
+   // Lowest level reading routine
+   Int_t    ScanNextLine(Bool_t do_warn = kTRUE);
+
+   // handy static io routines
+   //
+   static Bool_t   IsEndfTape(const Char_t *filename);
+   static Int_t    Atoi(const Char_t s[], Int_t len=11, Char_t *err=0);
+   static Double_t Atof(const Char_t s[], Char_t *err=0);
+
+   void AppendToEndf(FILE *endffile);
+
+private:
+   Bool_t  fIsEndfTape;  // kTRUE if it is the ASCII ENDF data file
+   FILE*   fFP;          //! File pointer
+   Char_t* fSrcFilename; //! Filename of the ASCII ENDF data file
+   Char_t  fLine[82];    //! The string of the line
+   Char_t  fTitle[81];   // the 1st title line of ENDF tape
+
+   Int_t   fMAT;         //! MAT number of ENDF (target material id)
+   Int_t   fMF;          //! MF number of ENDF (File id)
+   Int_t   fMT;          //! MT number of ENDF (Section id)
+   Int_t   fNS;          //! Line number from the beginning of the section
+
+   Long_t  fLineNum;      //! Line number from the top of the tape
+
+   Long_t  fPos;          //! file position
+
+   Bool_t  fHasEOF;       //! kTRUE if EOF has been reached
+
+   //Int_t   verbose;
+
+   ClassDef(TNuEndfIO, 1) // class for an ENDF data file
+};
+
+
+#endif
+

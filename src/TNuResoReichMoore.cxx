@@ -1,0 +1,237 @@
+// TNuResoReichMoore.cxx  =====================================================
+// Author: Tae-Sun Park   Jun 13 2011
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// TNuResoReichMoore : public TNuResoResolved
+//
+// Reich-Moore (LRF=3)
+//
+// ------------------ head --------------------------------------------------
+//
+// HeadAt(0) = RangeCont() =
+// [MAT, 2,151/  EL,  EH, LRU, LRF, NRO, NAPS]CONT (range)
+//
+// HeadAt(1) = GetAPE() =
+// [MAT, 2,151/ 0.0, 0.0,   0,   0,  NR,   NP/AP(E) if NRO > 0
+//
+// HeadAt(2) = SpinCont() =
+// [MAT, 2,151/ SPI,  AP,   LAD,  0,    NLS,   NLSC]CONT
+//
+// ------------------ body --------------------------------------------------
+//
+// At(n) = n-th subsection for a given L (n=0, NLS-1) =
+// = a TNuList fo
+//
+//[MAT, 2,151/ AWRI, APL,  L,    0,    6*NRS, NRS/
+//             ER_1, AJ1,  GN_1, GG_1, GFA_1, GFB_1,
+//             ER_2, AJ2,  GN_2, GG_2, GFA_2, GFB_2,
+//             --------------------------------
+//             ER_N, AJ_N, GN_N, GG_N, GFA_N, GFB_N]LIST (with N=NRS)
+//
+// The values of ER for each l-value are given in increasing order.
+//
+// ------------------ notes -------------------------------------------------
+//
+//
+/////////////////////////////////////////////////////////////////////////////
+
+#include "TNuResoReichMoore.h"
+
+//#include "TNuSec02151.h"
+#include "TMath.h"
+#include "TNuEndfIO.h"
+#include "TNuTab1.h"
+#include "TNuTab2.h"
+#include "TNuRecsWithCont.h"
+#include "TNuContLists.h"
+
+#include "TROOT.h"
+#include "TCanvas.h"
+#include "TGraph.h"
+#include "TMultiGraph.h"
+#include "TPad.h"
+
+#include "TNuMath.h"
+#include "TArrayD.h"
+
+using namespace TMath;
+using namespace std;
+
+ClassImp(TNuResoReichMoore)
+
+//______________________________________________________________________________
+void TNuResoReichMoore::ImportEndfData(TNuEndfIO& src)
+{
+   // Reich-Moore (LRF=3)
+   //
+
+   //SetCont(new TNuCont(src, " EL, EH, LRU, LRF, NRO, NAPS /range"));
+   //if (GetNRO())
+   //   Add(new TNuTab1(src, "0.0, 0.0, 0, 0, NR, NP/AP(E)"));
+
+   SetSpinCont(new TNuCont(src, "SPI, AP, LAD, 0, NLS, NLSC"));
+
+   for (Int_t nls=0; nls < GetNLS(); nls++) {
+      TNuList *list = new TNuList(src, "AWRI,APL, L, 0, 6*NRS, NRS"
+             "; ER, AJ, GN, GG, GFA, GFB");
+      Add(list);
+   }
+}
+
+//______________________________________________________________________________
+void TNuResoReichMoore::EvalRP(Double_t Ein, Double_t sig[]) const
+{
+   // Evaluate resonance parameters
+   // Ein : incident energy [in eV]
+   // sig[4] : resonance contribution to each component of the cross sections
+   // [MAT, 2,151/ SPI, AP, LAD, 0, NLS, NLSC]CONT
+   using namespace TMath;
+
+   for (Int_t i=0; i< 4; i++) sig[i]=0;
+   if (Ein < GetEL() || Ein > GetEH()) return;
+
+   Double_t hat_radius = (GetNRO() == 0) ? GetAP() : GetAPE(Ein);
+
+   Double_t sigAbsorption = 0; // absorption = fission + capture
+
+   // CM momentum p when Ein = 1 eV in [1/10^(-12) fm]
+   Double_t AWRI = GetAWRI();
+   Double_t p1 = Sqrt(2*TNuMath::MassOfNeutron())*AWRI/(AWRI+1)/TNuMath::HbarEv10fm();
+   Double_t p = p1 * Sqrt(Ein);
+
+   Int_t L=0;
+   for (Int_t nls=0; nls < GetNLS(); nls++) {
+      TNuList *list = (TNuList*) BodyAt(nls);
+      //assert(list->ClassName() == "TNuList");
+      list->AssertClassName("TNuList");
+
+      // AWRI,APL, L, 0, 6*NRS, NRS ; ER, AJ, GN, GG, GFA, GFB/ LIST
+      L = list->GetL1();
+      Double_t APL = list->GetC2();
+      if (APL > 0.001) hat_radius = APL;
+
+      Double_t phiL = TNuMath::HardspherePhaseShift(L, p * hat_radius);
+
+      Double_t Sl, Pl; // S_l(|Ein|) and P_l(|E|)
+      HardsphereFactors(L, p, Ein, &Pl, &Sl);
+
+      Int_t twoI = (Int_t) (2*GetSPI() + 0.5); // 2 * I
+      for (Int_t twoS = Abs(twoI-1); twoS <= twoI + 1; twoS += 2) {
+         // loop over s = | I - 1/2|, I + 1/2
+         for (Int_t twoJ = Abs(2*L - twoS); twoJ <= 2*L + twoS; twoJ += 2) {
+            // loop over J = |L - s|, L + s
+            /*
+            Double_t X, Y;
+            // exp(2 i phi) ( 1 - Unn ) = X + i Y
+            // X = cos(2 phi) - 1 + sum_r GN GT/2/den, Y = GN dE /den + sin(2 phi)
+            X = Cos(2*phiL) - 1;
+            Y = Sin(2*phiL);
+            */
+            Double_t AJ = (twoS == twoI + 1) ? twoJ /2. : - twoJ/2.; // signed J
+            Double_t gJ = (2*Abs(AJ)+1)/(4*GetSPI()+2);
+
+            const TComplex ci(0,1.0);
+            const TComplex ci2(0,0.5);
+            TComplex ImK[3][3];// the matrix (1 - K)_ab
+            for (Int_t a=0; a<3; a++)
+               for (Int_t b=0; b< 3; b++)
+                  ImK[a][b]= (a==b) ? 1. : 0.;
+
+            struct ReichMooreStruct *r = (struct ReichMooreStruct*) list->GetData();
+            for (Int_t nr=0; nr < list->GetN2(); nr++, r++) {
+               const Double_t eps = 1.E-10;
+               if (Abs(AJ - r->AJ) > eps) continue;
+               // loop over resonance levels
+               Double_t ER = r->ER; // Resonance energy (in the laboratory system).
+               Double_t Slr, Plr;
+               HardsphereFactors(L, p1 * Sqrt(Abs(ER)), ER, &Plr, &Slr);
+               //Double_t ERp = ER + (Slr - Sl)*r->GN / (2*Plr);
+
+               Double_t gamma[3];// gamma_a = Sqrt(Gamma_a), a=n,f1,f2
+               gamma[0]= Sqrt(r->GN * Pl / Plr);
+               gamma[1]= TNuMath::SignedSqrt(r->GFA);
+               gamma[2]= TNuMath::SignedSqrt(r->GFB);
+
+               TComplex factor = -1. * ci2 /(ER - Ein - ci2 * r->GG);
+               for (Int_t a=0; a<3; a++)
+                  for (Int_t b=a; b< 3; b++)
+                     ImK[a][b] += factor * gamma[a] * gamma[b];
+            }
+            for (Int_t a=1; a<3; a++)
+               for (Int_t b=0; b < a; b++)
+                  ImK[a][b] = ImK[b][a];
+            // now inverse ImK
+
+            TNuMath::InverseSymmetricComplex3x3Matrix(ImK);
+
+            // get rho_ab = delta_ab - (1-K)^(-1)_ab when a=n
+            TComplex rhonn = 1. - ImK[0][0];
+            TComplex rhonnExp2iphi = rhonn * TComplex::Exp(-2.*ci*phiL);
+            TComplex rhonf1 = - ImK[0][1];
+            TComplex rhonf2 = - ImK[0][2];
+
+            Double_t Abs_rhonn = TComplex::Abs(rhonn);
+            Double_t Abs_rhonf1 = TComplex::Abs(rhonf1);
+            Double_t Abs_rhonf2 = TComplex::Abs(rhonf2);
+
+            sig[kTotal] += gJ*(2 - 2*Cos(2*phiL) + 4*rhonnExp2iphi.Re());
+            // absorption = fission + capture
+            sigAbsorption += 4*gJ*(rhonn.Re() - Abs_rhonn*Abs_rhonn);
+            sig[kFission] += 4*gJ*(Abs_rhonf1*Abs_rhonf1 + Abs_rhonf2*Abs_rhonf2);
+         }
+      }
+   }
+
+   for (Int_t ltmp=GetNLS(); ltmp < GetNLSC(); ltmp++) {
+      L++;
+      Double_t phiL = TNuMath::HardspherePhaseShift(L, p * hat_radius);
+      sig[kTotal] += 4*(2*L+1)*Sin(phiL)*Sin(phiL);
+   }
+
+   sig[kElastic] = sig[kTotal] - sigAbsorption;
+   sig[kCapture] = sigAbsorption - sig[kFission];
+
+   for (Int_t i=0; i< 4; i++) sig[i] *= Pi()/(p*p);
+}
+
+
+//______________________________________________________________________________
+Int_t TNuResoReichMoore::GenerateMeshPoints(TArrayD& mesh) const
+{
+   // Generates mesh points for the range  EL < ER < EH
+   // according to the accuracy
+
+   Int_t nrs = 0;
+   for (Int_t nls=0; nls < GetNLS(); nls++) {
+      TNuList *list = (TNuList*) BodyAt(nls);
+      nrs +=  list->GetN2();
+   }
+
+   TArrayD energies(nrs);
+   TArrayD widths(nrs);
+   Int_t ir=0;
+
+   for (Int_t nls=0; nls < GetNLS(); nls++) {
+      TNuList *list = (TNuList*) BodyAt(nls);
+
+      list->AssertClassName("TNuList");
+
+      struct ReichMooreStruct *r = (struct ReichMooreStruct*) list->GetData();
+      for (Int_t nr=0; nr < list->GetN2(); nr++, r++) {
+         // loop over resonance levels
+         Double_t ER = r->ER; // Resonance energy (in the laboratory system).
+         //Double_t gT = r->GN;
+         Double_t gT = r->GN + r->GG + TMath::Abs(r->GFA) + TMath::Abs(r->GFB);
+         //if (ER > GetEL() || ER < GetEH()) {
+            energies.AddAt(ER, ir);
+            widths.AddAt(gT, ir);
+            ir++;
+         //}
+      }
+   }
+
+   energies.Set(ir);
+   widths.Set(ir);
+   return MakeSubIntervals(energies, widths, mesh);
+}

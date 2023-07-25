@@ -1,0 +1,58 @@
+// TNuIntg.h  =====================================================
+// Author: Tae-Sun Park   Jun 13 23:43:10 2011
+
+#ifndef ROOT_TNuIntg
+#define ROOT_TNuIntg
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// TNuIntg
+//
+// 1 CONT + NM INTG lines
+//
+// [MAT,32,151/ 0.0, 0.0, NDIGIT, NNN, NM, 0 ]CONT
+// [MAT,32,151/ II, JJ, KIJ ]INTG
+// [MAT,32,151/ II, JJ, KIJ ]INTG
+// < Continue until a total of NM of INTG records are read >
+//
+///////////////////////////////////////////////////////////////////////////////
+
+#include "TNuCont.h"
+class TNuEndfIO;
+
+class TNuIntg : public TNuCont
+{
+public:
+   TNuIntg(): TNuCont(), fNM(0), fNData(0), fI(0), fJ(0), fK(0) {}
+   TNuIntg(Double_t c1, Double_t c2, Int_t l1, Int_t l2, Int_t n1, Int_t n2);
+   TNuIntg(TNuEndfIO &src, const Char_t* label=" 0.0, 0.0, NDIGIT, NNN, NM, 0");
+   //TNuIntg(const TNuIntg &list);
+   virtual ~TNuIntg();
+
+   void  ImportEndfData(TNuEndfIO &src);
+   Int_t GetNDIGIT() { return GetL1() ? GetL1() : 2; }
+   Int_t GetNNN()    { return GetL2(); }
+   Int_t GetNM()     { return GetN1(); }
+   Int_t GetNData()  { return fNData; }
+   void SetAt(Int_t i, Int_t j, Short_t kij[], Int_t at);
+
+   virtual void SetCont(Double_t c1, Double_t c2, Int_t l1, Int_t l2, Int_t n1, Int_t n2);
+
+
+private:
+   void      ClearHeap();
+   void      Init();
+   Int_t     fNM;    //! number of INTG lines
+   Int_t     fNData; //! number of INTG data per line
+   Int_t*    fI;     //[fN1]
+   Int_t*    fJ;     //[fN1]
+   Short_t** fK;     //[fN1]
+
+   ClassDef(TNuIntg, 1) // Class for ENDF INTG structure
+};
+
+
+#endif
+
+
+

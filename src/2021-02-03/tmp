@@ -1,0 +1,11 @@
+TNuList2.cxx:   return Interpolation(interp, x, xys);
+TNuMath.cxx:      result[i]= TNuVTab::Interpolation(interp, E, xys);
+TNuResoUnresolved.cxx:         gF = TNuVTab::Interpolation(interp, Ein, xys);
+TNuTab1.cxx:   return Interpolation(interp, x, xys);
+TNuTab1Lists.cxx:   return Interpolation(interp, x, xys);
+TNuTab1ListsSub.cxx:   return Interpolation(interp, E, xys);
+TNuTab2.cxx:   return Interpolation(interp, x, xys);
+TNuTab3.cxx:   Double_t f = Interpolation(interp % 10, x, xys);
+TNuVTab.cxx:   return Interpolation(interp, x, xys);
+TNuVTab.cxx:   return Interpolation(interp, x, &xys[2*n]);
+TNuVTab.cxx:Double_t TNuVTab::Interpolation(Int_t interp, Double_t x, Double_t *xys)
